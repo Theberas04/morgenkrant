@@ -37,6 +37,7 @@ def leesmin(words):
 env.filters["lange_datum"] = lange_datum
 env.filters["korte_datum"] = korte_datum
 env.filters["leesmin"] = leesmin
+env.filters["bestandsnaam"] = lambda pad: str(pad).rsplit("/", 1)[-1]
 
 
 def _kaal(art):
@@ -65,6 +66,7 @@ def context(edition):
         "day": edition["day"],
         "nummer": payload.get("nummer", 1),
         "weer": payload.get("weer"),
+        "rubrieken": payload.get("rubrieken") or [],
         "lange_datum": lange_datum(edition["day"]),
         "krant": config.PAPER_TITLE,
         "ondertitel": config.PAPER_SUBTITLE,
@@ -79,8 +81,8 @@ def context(edition):
     }
 
 
-def render_html(edition, template="web.html"):
-    return env.get_template(template).render(**context(edition))
+def render_html(edition, template="web.html", extra=None):
+    return env.get_template(template).render(**context(edition), **(extra or {}))
 
 
 def render_pdf(edition, variant="a4", out_dir=None):

@@ -8,7 +8,7 @@ import argparse
 import sys
 from datetime import date
 
-from krant import db, fetch, render, select, weer
+from krant import db, fetch, render, rubrieken, select, weer
 
 SNAPSHOT = ("url", "title", "source", "section", "summary", "html",
             "published", "words", "status")
@@ -39,9 +39,11 @@ def build(no_fetch=False):
     bestaand = db.get_edition(day)
     nummer = (bestaand["payload"].get("nummer") if bestaand else None) or len(db.all_editions(1000)) + 1
     weerdata = weer.haal_alles() or weer.laatste_weer()
+    rubrieken_blokken = rubrieken.haal_alles(vers=False)
     payload = {
         "nummer": nummer,
         "weer": weerdata,
+        "rubrieken": rubrieken_blokken,
         "lead": snapshot(keuze["lead"]),
         "news": [snapshot(a) for a in keuze["news"]],
         "tech": [snapshot(a) for a in keuze["tech"]],

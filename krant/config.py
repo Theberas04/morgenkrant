@@ -36,6 +36,8 @@ EXTRACT_PER_FEED = 8        # hoeveel artikelen per bron per run volledig opgeha
 MIN_FULL_WORDS = 220        # minder tekst = samenvatting i.p.v. volledig artikel
 
 TIMEZONE = "Europe/Amsterdam"
+MAANDEN = ["januari", "februari", "maart", "april", "mei", "juni", "juli",
+           "augustus", "september", "oktober", "november", "december"]
 
 # Weerblok (Open-Meteo, geen sleutel nodig)
 WEER_PLAATSEN = ["Sittard", "Hilversum"]

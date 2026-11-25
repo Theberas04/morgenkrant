@@ -110,6 +110,34 @@ h3.rubriek span { font-family: "KrantCond", sans-serif; font-size: 11px; letter-
 .kort b { font-family: "KrantSans", sans-serif; font-size: 11.5px; letter-spacing: .06em;
   text-transform: uppercase; color: var(--rood); display: block; }
 
+/* rubrieken */
+.rubrieken { margin-top: 40px; border-top: 2px solid var(--inkt); padding-top: 16px; }
+.rubrieken-kop { display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 4px; }
+.rubrieken-kop h2 { font-family: "KrantDisplay", Georgia, serif; font-size: 30px; margin: 0; }
+.rubrieken-kop span { font-family: "KrantCond", sans-serif; font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--grijs); }
+.rubrieken-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 22px 26px; margin-top: 18px; }
+.rubriek h3 { font-family: "KrantCond", sans-serif; font-size: 13px; letter-spacing: .15em;
+  text-transform: uppercase; margin: 0 0 8px; padding-bottom: 5px;
+  border-bottom: 1px solid var(--inkt); }
+.rubriek h3 small { font-family: "KrantSans", sans-serif; font-size: 11px; letter-spacing: .04em;
+  text-transform: none; color: var(--grijs); float: right; }
+.rubriek ul { margin: 0; padding: 0; list-style: none; }
+.rubriek li { font-size: 15.5px; padding: 5px 0; border-bottom: 1px dotted var(--lijn); }
+.rubriek li b { font-family: "KrantCond", sans-serif; font-size: 12px; letter-spacing: .08em;
+  color: var(--rood); margin-right: 4px; }
+.rubriek .tip { font-size: 16px; font-style: italic; margin: 0; }
+.vers { font-size: 15.5px; line-height: 1.5; }
+.vers span { display: block; }
+figure.prent { margin: 0; }
+figure.prent img { width: 100%; border: 1px solid var(--lijn); }
+figure.prent figcaption { font-size: 12.5px; color: var(--grijs); margin-top: 6px; }
+figure.prent .credit { font-family: "KrantSans", sans-serif; font-size: 11px; color: var(--grijs); }
+.rubriek-bron { font-family: "KrantSans", sans-serif; font-size: 11.5px; color: var(--grijs);
+  text-decoration: none; border-bottom: 1px solid var(--lijn); }
+
 footer { margin-top: 40px; border-top: 1px solid var(--lijn); padding-top: 16px;
   font-family: "KrantSans", sans-serif; font-size: 12.5px; color: var(--grijs); }
 footer .edities { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
@@ -182,6 +210,8 @@ footer .edities a { text-decoration: none; border-bottom: 1px solid var(--lijn);
   <h3 class="rubriek" id="techniek">Techniek <span>{{ tech|length }} artikelen</span></h3>
   {% for a in tech %}{{ m.artikel(a) }}{% endfor %}
   {% endif %}
+
+  {% include "_rubrieken.html" %}
 
   {% if shorts %}
   <section class="kort">

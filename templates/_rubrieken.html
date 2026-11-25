@@ -1,0 +1,44 @@
+{% if rubrieken %}
+<section class="rubrieken">
+  <div class="rubrieken-kop">
+    <h2>Verder in deze krant</h2>
+    <span>{{ rubrieken|length }} rubrieken</span>
+  </div>
+  <div class="rubrieken-grid">
+    {% for b in rubrieken %}
+    <div class="rubriek">
+      <h3>{{ b.titel }}{% if b.bron %} <small>{{ b.bron }}</small>{% endif %}</h3>
+
+      {% if b.regels %}
+      <div class="vers">
+        {% for regel in b.regels %}<span>{{ regel }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if b.tekst %}
+      <p class="tip">{{ b.tekst }}</p>
+      {% endif %}
+
+      {% if b.beeld %}
+      <figure class="prent">
+        <img src="{{ b.beeld }}" alt="{{ b.titel }}">
+        {% if b.onderschrift %}<figcaption>{{ b.onderschrift }}</figcaption>{% endif %}
+        {% if b.credit %}<span class="credit">{{ b.credit }}</span>{% endif %}
+      </figure>
+      {% endif %}
+
+      {% if b['items'] %}
+      <ul>
+        {% for it in b['items'] %}
+        <li>{% if it.meta %}<b>{{ it.meta }}</b> {% endif %}{{ it.tekst }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      {% if b.link %}<a class="rubriek-bron" href="{{ b.link }}">{{ b.bron }}</a>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
