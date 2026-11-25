@@ -1,0 +1,199 @@
+{% import "_macros.html" as m %}<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ krant }} — {{ lange_datum }}</title>
+<style>
+@font-face { font-family: "KrantSerif"; src: url(/fonts/PT_Serif-Web-Regular.ttf); font-weight: 400; }
+@font-face { font-family: "KrantSerif"; src: url(/fonts/PT_Serif-Web-Bold.ttf); font-weight: 700; }
+@font-face { font-family: "KrantSerif"; src: url(/fonts/PT_Serif-Web-Italic.ttf); font-style: italic; }
+@font-face { font-family: "KrantDisplay"; src: url(/fonts/PlayfairDisplay.ttf); }
+@font-face { font-family: "KrantCond"; src: url("/fonts/RobotoCondensed[wght].ttf"); }
+@font-face { font-family: "KrantSans"; src: url(/fonts/PT_Sans-Web-Regular.ttf); }
+
+:root {
+  --papier: #faf7f0; --inkt: #17161a; --grijs: #6d6659; --lijn: #d9d3c6;
+  --rood: #a4301f; --breed: 40rem; --tafel: #e9e2d4;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--tafel); color: var(--inkt);
+  font-family: "KrantSerif", Georgia, serif; line-height: 1.62; font-size: 17px;
+  -webkit-text-size-adjust: 100%; }
+a { color: inherit; }
+.wrap { max-width: var(--breed); margin: 0 auto; padding: 0 18px 64px;
+  background: var(--papier); min-height: 100vh; }
+@media (min-width: 760px) { .wrap { padding: 0 34px 70px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.05), 0 20px 60px rgba(0,0,0,.10); } }
+@media (min-width: 1024px) {
+  body { font-size: 18px; }
+  .wrap { max-width: 54rem; }
+  section.lead .tekst { column-count: 2; column-gap: 2.6rem; }
+  section.lead .tekst > p:first-child { break-inside: avoid; }
+}
+
+header.top { border-bottom: 2.5px solid var(--inkt); padding-top: 22px; }
+.topbar { display: flex; justify-content: space-between; gap: 12px;
+  font-family: "KrantCond", sans-serif; font-size: 11px; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--grijs); }
+h1.logo { font-family: "KrantDisplay", Georgia, serif; font-weight: 400;
+  font-size: clamp(30px, 9vw, 52px); line-height: 1; margin: 10px 0 4px;
+  letter-spacing: -.02em; text-align: center; }
+.ondertitel { text-align: center; font-family: "KrantSans", sans-serif;
+  font-size: 12.5px; color: var(--grijs); margin: 0 0 14px; }
+.dateline { display: flex; justify-content: space-between; gap: 10px;
+  border-top: 1px solid var(--inkt); border-bottom: 1px solid var(--inkt);
+  padding: 6px 0; font-family: "KrantCond", sans-serif; font-size: 11px;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--grijs); }
+
+.pdfbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin: 14px 0 26px; font-family: "KrantSans", sans-serif; font-size: 13px; }
+.pdfbar a { border: 1px solid var(--inkt); padding: 7px 12px; text-decoration: none;
+  border-radius: 2px; }
+.pdfbar a:hover { background: var(--inkt); color: var(--papier); }
+.pdfbar .hint { color: var(--grijs); font-size: 12px; }
+
+.kicker { font-family: "KrantCond", sans-serif; font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--rood); font-weight: 700; }
+.byline { font-family: "KrantSans", sans-serif; font-size: 11.5px; color: #8a8375;
+  text-transform: uppercase; letter-spacing: .06em; margin: 4px 0 10px; }
+
+section.lead > h2 { font-family: "KrantDisplay", Georgia, serif; font-weight: 700;
+  font-size: clamp(26px, 6.4vw, 38px); line-height: 1.1; margin: 6px 0 6px;
+  letter-spacing: -.015em; }
+.tekst p { margin: 0 0 15px; }
+.tekst > p:first-child::first-letter { float: left; font-family: "KrantDisplay", serif;
+  font-size: 56px; line-height: .78; padding: 6px 8px 0 0; font-weight: 700; }
+section.lead { border-bottom: 1px solid var(--lijn); padding-bottom: 20px; margin-bottom: 8px; }
+
+article { border-bottom: 1px solid var(--lijn); padding: 24px 0; }
+article > h2 { font-family: "KrantDisplay", Georgia, serif; font-weight: 700;
+  font-size: 23px; line-height: 1.18; margin: 5px 0 4px; letter-spacing: -.01em; }
+article .tekst { font-size: 16.5px; }
+.tekst h2, .tekst h3 { font-family: "KrantSans", sans-serif; font-size: 15px;
+  margin: 20px 0 6px; }
+.tekst ul, .tekst ol { padding-left: 20px; margin: 0 0 15px; }
+.tekst blockquote { margin: 16px 0; padding-left: 14px; border-left: 2px solid var(--lijn);
+  color: #43414a; font-style: italic; }
+.tekst a { color: var(--rood); }
+.bron, .samenvatting { font-family: "KrantSans", sans-serif; font-size: 12.5px;
+  color: var(--grijs); margin-top: 6px; }
+.samenvatting em { font-style: italic; }
+
+.weer { display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+  border: 1px solid var(--lijn); border-left: 3px solid var(--rood);
+  padding: 12px 14px; margin: 0 0 22px; font-family: "KrantSans", sans-serif; font-size: 14px; }
+.weer-nu { min-width: 150px; }
+.weer-kop { display: block; font-family: "KrantCond", sans-serif; font-size: 11px;
+  letter-spacing: .13em; text-transform: uppercase; color: var(--rood); }
+.weer-nu strong { font-family: "KrantSerif", serif; font-size: 24px; }
+.weer-dagen { display: flex; flex: 1; justify-content: space-between; gap: 6px; min-width: 220px; }
+.weer-dag { text-align: center; font-size: 13px; line-height: 1.3; }
+.weer-dag b { display: block; font-family: "KrantCond", sans-serif; font-size: 11px;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--grijs); }
+.weer-dag .max { font-weight: 700; }
+.weer-dag .min { color: var(--grijs); margin-left: 3px; }
+.weer-dag small { display: block; font-size: 11px; color: var(--grijs); }
+
+h3.rubriek { font-family: "KrantDisplay", Georgia, serif; font-size: 30px; font-weight: 700;
+  margin: 34px 0 0; padding-bottom: 8px; border-bottom: 2px solid var(--inkt); }
+h3.rubriek span { font-family: "KrantCond", sans-serif; font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--grijs); float: right; padding-top: 14px; }
+
+.kort { margin-top: 34px; border-top: 2px solid var(--inkt); padding-top: 14px; }
+.kort h3 { font-family: "KrantCond", sans-serif; font-size: 13px; letter-spacing: .16em;
+  text-transform: uppercase; margin: 0 0 12px; }
+.kort ul { list-style: none; padding: 0; margin: 0; }
+.kort li { padding: 9px 0; border-bottom: 1px dotted var(--lijn); font-size: 15.5px; }
+.kort b { font-family: "KrantSans", sans-serif; font-size: 11.5px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--rood); display: block; }
+
+footer { margin-top: 40px; border-top: 1px solid var(--lijn); padding-top: 16px;
+  font-family: "KrantSans", sans-serif; font-size: 12.5px; color: var(--grijs); }
+footer .edities { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+footer .edities a { text-decoration: none; border-bottom: 1px solid var(--lijn); }
+@media (prefers-color-scheme: dark) {
+  :root { --papier: #14131a; --inkt: #ece8de; --grijs: #a09a8c; --lijn: #34313d;
+          --rood: #e0705d; --tafel: #0c0b10; }
+  article .tekst { color: #e4e0d6; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="topbar">
+      <span>{{ aantal }} artikelen</span>
+      <span>± {{ minuten }} minuten</span>
+    </div>
+    <h1 class="logo">{{ krant }}</h1>
+    <p class="ondertitel">{{ ondertitel }}</p>
+    <div class="dateline">
+      <span>{{ lange_datum }}</span>
+      <span>{{ bronnen|length }} bronnen</span>
+    </div>
+  </header>
+
+  <div class="pdfbar">
+    <a href="/pdf/{{ day }}/a4.pdf">PDF · A4</a>
+    <a href="/pdf/{{ day }}/mobiel.pdf">PDF · telefoon</a>
+    <span class="hint">of lees gewoon hieronder</span>
+  </div>
+
+{% if weer %}
+<div class="weer">
+  <div class="weer-nu">
+    <span class="weer-kop">Weer · {{ weer.plaats }}</span>
+    <strong>{{ weer.nu.temperatuur }}°</strong> {{ weer.nu.tekst }} · wind {{ weer.nu.wind }} km/u
+  </div>
+  <div class="weer-dagen">
+    {% for d in weer.dagen %}
+    <div class="weer-dag">
+      <b>{{ d.dag }}</b>
+      <span class="max">{{ d.max }}°</span><span class="min">{{ d.min }}°</span>
+      <small>{{ d.tekst }}{% if d.neerslag %} · {{ d.neerslag }}%{% endif %}</small>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+  {% if lead %}
+  <section class="lead">
+    {{ m.kicker(lead) }}
+    <h2>{{ lead.title }}</h2>
+    <div class="byline">{{ lead.published|korte_datum }}{% if lead.words %} · {{ lead.words|leesmin }} min{% endif %}</div>
+    <div class="tekst">
+      {% if lead.status == 'full' and lead.html %}{{ lead.html|safe }}
+      {% else %}<p>{{ lead.summary }}</p><p class="samenvatting">Volledig artikel bij {{ lead.source }} — <a href="{{ lead.url }}">lees verder</a></p>{% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% for a in news %}{{ m.artikel(a) }}{% endfor %}
+
+  {% if tech %}
+  <h3 class="rubriek" id="techniek">Techniek <span>{{ tech|length }} artikelen</span></h3>
+  {% for a in tech %}{{ m.artikel(a) }}{% endfor %}
+  {% endif %}
+
+  {% if shorts %}
+  <section class="kort">
+    <h3>In het kort</h3>
+    <ul>
+      {% for a in shorts %}
+      <li><b>{{ a.source }}</b>{{ a.title }}{% if a.summary %} <span style="color:#6d6659">{{ a.summary|truncate(160, true, '…') }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <footer>
+    <div>Samengesteld uit {{ tagline }}.</div>
+    <div class="edities">
+      {% for e in edities %}<a href="/editie/{{ e.day }}">{{ e.day }}</a>{% endfor %}
+    </div>
+  </footer>
+</div>
+</body>
+</html>

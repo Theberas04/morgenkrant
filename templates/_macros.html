@@ -1,0 +1,18 @@
+{% macro kicker(a) %}<div class="kicker">{{ a.source }}{% if a.section and a.section != 'Nieuws' %} · {{ a.section }}{% endif %}</div>{% endmacro %}
+
+{% macro artikel(a, groot=false) %}
+<article class="{{ 'groot' if groot else '' }}">
+  {{ kicker(a) }}
+  <h2>{{ a.title }}</h2>
+  <div class="byline">{{ a.published|korte_datum }}{% if a.words %} · {{ a.words|leesmin }} min{% endif %}</div>
+  {% if a.status == 'full' and a.html %}
+    <div class="tekst">{{ a.html|safe }}</div>
+    <div class="bron">Bron: {{ a.source }} — <a href="{{ a.url }}">lees verder op {{ a.source }}</a></div>
+  {% else %}
+    <div class="tekst">
+      <p>{{ a.summary }}</p>
+      <p class="samenvatting">Volledig artikel bij {{ a.source }} — <a href="{{ a.url }}">lees verder</a></p>
+    </div>
+  {% endif %}
+</article>
+{% endmacro %}
