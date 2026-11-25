@@ -52,8 +52,10 @@ h1.logo { font-family: "KrantDisplay"; font-size: 34pt; line-height: .96; margin
   text-transform: uppercase; letter-spacing: .07em; }
 
 /* weerblok */
-.weer { display: flex; gap: 5mm; border-bottom: .6pt solid #17161a; padding: 1.6mm 0 2mm;
-  margin-bottom: 3mm; font-family: "KrantSans"; font-size: 7.6pt; }
+.weer { border-bottom: .6pt solid #17161a; padding: 1.4mm 0 1.8mm; margin-bottom: 3mm;
+  font-family: "KrantSans"; font-size: 7.6pt; }
+.weer-rij { display: flex; gap: 5mm; }
+.weer-rij + .weer-rij { border-top: .3pt dotted #c9c2b2; margin-top: 1.2mm; padding-top: 1.2mm; }
 .weer-nu { width: 34%; line-height: 1.35; color: #43414a; }
 .weer-kop { display: block; font-family: "KrantCond"; font-size: 7pt; letter-spacing: .13em;
   text-transform: uppercase; color: #a4301f; }
@@ -133,19 +135,23 @@ article > h2 { font-size: 12pt; }
 </div>
 {% if weer %}
 <div class="weer">
-  <div class="weer-nu">
-    <span class="weer-kop">Weer · {{ weer.plaats }}</span>
-    <strong>{{ weer.nu.temperatuur }}°</strong> {{ weer.nu.tekst }} · wind {{ weer.nu.wind }} km/u
-  </div>
-  <div class="weer-dagen">
-    {% for d in weer.dagen %}
-    <div class="weer-dag">
-      <b>{{ d.dag }}</b>
-      <span class="max">{{ d.max }}°</span><span class="min">{{ d.min }}°</span>
-      <small>{{ d.tekst }}{% if d.neerslag %} · {{ d.neerslag }}%{% endif %}</small>
+  {% for blok in weer.plaatsen %}
+  <div class="weer-rij">
+    <div class="weer-nu">
+      <span class="weer-kop">Weer · {{ blok.plaats }}</span>
+      <strong>{{ blok.nu.temperatuur }}°</strong> {{ blok.nu.tekst }} · wind {{ blok.nu.wind }} km/u
     </div>
-    {% endfor %}
+    <div class="weer-dagen">
+      {% for d in blok.dagen %}
+      <div class="weer-dag">
+        <b>{{ d.dag }}</b>
+        <span class="max">{{ d.max }}°</span><span class="min">{{ d.min }}°</span>
+        <small>{{ d.tekst }}{% if d.neerslag %} · {{ d.neerslag }}%{% endif %}</small>
+      </div>
+      {% endfor %}
+    </div>
   </div>
+  {% endfor %}
 </div>
 {% endif %}
 

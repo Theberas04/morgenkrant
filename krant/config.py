@@ -38,7 +38,7 @@ MIN_FULL_WORDS = 220        # minder tekst = samenvatting i.p.v. volledig artike
 TIMEZONE = "Europe/Amsterdam"
 
 # Weerblok (Open-Meteo, geen sleutel nodig)
-WEER_PLAATS = "Maastricht"
+WEER_PLAATSEN = ["Sittard", "Hilversum"]
 WEER_DAGEN = 5
 
 USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "

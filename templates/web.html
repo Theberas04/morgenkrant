@@ -80,9 +80,11 @@ article .tekst { font-size: 16.5px; }
   color: var(--grijs); margin-top: 6px; }
 .samenvatting em { font-style: italic; }
 
-.weer { display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+.weer { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px;
+  margin: 0 0 22px; }
+.weer-blok { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
   border: 1px solid var(--lijn); border-left: 3px solid var(--rood);
-  padding: 12px 14px; margin: 0 0 22px; font-family: "KrantSans", sans-serif; font-size: 14px; }
+  padding: 10px 12px; font-family: "KrantSans", sans-serif; font-size: 14px; }
 .weer-nu { min-width: 150px; }
 .weer-kop { display: block; font-family: "KrantCond", sans-serif; font-size: 11px;
   letter-spacing: .13em; text-transform: uppercase; color: var(--rood); }
@@ -142,23 +144,27 @@ footer .edities a { text-decoration: none; border-bottom: 1px solid var(--lijn);
 
 {% if weer %}
 <div class="weer">
-  <div class="weer-nu">
-    <span class="weer-kop">Weer · {{ weer.plaats }}</span>
-    <strong>{{ weer.nu.temperatuur }}°</strong> {{ weer.nu.tekst }} · wind {{ weer.nu.wind }} km/u
-  </div>
-  <div class="weer-dagen">
-    {% for d in weer.dagen %}
-    <div class="weer-dag">
-      <b>{{ d.dag }}</b>
-      <span class="max">{{ d.max }}°</span><span class="min">{{ d.min }}°</span>
-      <small>{{ d.tekst }}{% if d.neerslag %} · {{ d.neerslag }}%{% endif %}</small>
+  {% for blok in weer.plaatsen %}
+  <div class="weer-blok">
+    <div class="weer-nu">
+      <span class="weer-kop">Weer · {{ blok.plaats }}</span>
+      <strong>{{ blok.nu.temperatuur }}°</strong> {{ blok.nu.tekst }} · wind {{ blok.nu.wind }} km/u
     </div>
-    {% endfor %}
+    <div class="weer-dagen">
+      {% for d in blok.dagen %}
+      <div class="weer-dag">
+        <b>{{ d.dag }}</b>
+        <span class="max">{{ d.max }}°</span><span class="min">{{ d.min }}°</span>
+        <small>{{ d.tekst }}{% if d.neerslag %} · {{ d.neerslag }}%{% endif %}</small>
+      </div>
+      {% endfor %}
+    </div>
   </div>
+  {% endfor %}
 </div>
 {% endif %}
 
-  {% if lead %}
+{% if lead %}
   <section class="lead">
     {{ m.kicker(lead) }}
     <h2>{{ lead.title }}</h2>

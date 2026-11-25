@@ -38,7 +38,7 @@ def build(no_fetch=False):
     day = date.today().isoformat()
     bestaand = db.get_edition(day)
     nummer = (bestaand["payload"].get("nummer") if bestaand else None) or len(db.all_editions(1000)) + 1
-    weerdata = weer.haal_weer() or weer.laatste_weer()
+    weerdata = weer.haal_alles() or weer.laatste_weer()
     payload = {
         "nummer": nummer,
         "weer": weerdata,

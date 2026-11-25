@@ -1,4 +1,4 @@
-"""Weerblok: Open-Meteo, geen API-sleutel nodig."""
+"""Weerblok: Open-Meteo, geen API-sleutel nodig. Meerdere plaatsen naast elkaar."""
 import json
 from datetime import date, datetime, timedelta
 
@@ -26,14 +26,21 @@ CODES = {
 DAG_KORT = ["ma", "di", "wo", "do", "vr", "za", "zo"]
 
 
-def _plaats_gps(plaats):
-    """Coördinaten bij de plaatsnaam, één keer opzoeken en bewaren."""
+def _cache_lezen():
     try:
         data = json.loads(CACHE.read_text())
-        if data.get("plaats") == plaats and data.get("lat"):
-            return data["lat"], data["lon"]
     except (OSError, ValueError):
-        data = {}
+        return {"plaatsen": {}}
+    if "plaatsen" not in data:          # oude cache met één plaats
+        return {"plaatsen": {}}
+    return data
+
+
+def _gps(plaats, cache):
+    """Coördinaten bij de plaatsnaam, één keer opzoeken en bewaren."""
+    bekend = cache.get("plaatsen", {}).get(plaats) or {}
+    if bekend.get("lat"):
+        return bekend["lat"], bekend["lon"]
     try:
         antwoord = requests.get(GEO, params={"name": plaats, "count": 1, "language": "nl",
                                              "format": "json"}, timeout=15).json()
@@ -45,10 +52,8 @@ def _plaats_gps(plaats):
         return None, None
 
 
-def haal_weer(plaats=None, dagen=5):
-    """Actueel weer plus verwachting. Geeft None als er niets op te halen valt."""
-    plaats = plaats or config.WEER_PLAATS
-    lat, lon = _plaats_gps(plaats)
+def _plaats_weer(plaats, cache, dagen):
+    lat, lon = _gps(plaats, cache)
     if lat is None:
         return None
     try:
@@ -59,53 +64,77 @@ def haal_weer(plaats=None, dagen=5):
                      "precipitation_probability_max,wind_speed_10m_max,sunrise,sunset",
             "timezone": config.TIMEZONE, "forecast_days": dagen,
         }, timeout=20).json()
-    except (requests.RequestException, ValueError):
-        return None
-
-    try:
-        daily = antwoord["daily"]
-        nu = antwoord["current"]
-    except KeyError:
+        daily, nu = antwoord["daily"], antwoord["current"]
+    except (requests.RequestException, ValueError, KeyError):
         return None
 
     dagen_lijst = []
     for i, dag in enumerate(daily["time"]):
         d = date.fromisoformat(dag)
-        code = daily["weather_code"][i]
         dagen_lijst.append({
             "dag": "vandaag" if i == 0 else ("morgen" if i == 1 else DAG_KORT[d.weekday()]),
             "datum": f"{d.day}/{d.month}",
             "max": round(daily["temperature_2m_max"][i]),
             "min": round(daily["temperature_2m_min"][i]),
-            "tekst": CODES.get(code, "wisselvallig"),
+            "tekst": CODES.get(daily["weather_code"][i], "wisselvallig"),
             "neerslag": daily["precipitation_probability_max"][i] or 0,
             "wind": round(daily["wind_speed_10m_max"][i] / 3.6),
             "zonsopkomst": daily["sunrise"][i][11:16],
             "zonsondergang": daily["sunset"][i][11:16],
         })
 
-    resultaat = {
+    return {
         "plaats": plaats,
-        "opgehaald": datetime.now().isoformat(timespec="minutes"),
+        "lat": lat, "lon": lon,
         "nu": {"temperatuur": round(nu["temperature_2m"]),
                "tekst": CODES.get(nu["weather_code"], "wisselvallig"),
                "wind": round(nu["wind_speed_10m"] / 3.6)},
         "dagen": dagen_lijst,
     }
+
+
+def haal_alles(plaatsen=None, dagen=None):
+    """Weer voor alle plaatsen uit de configuratie (of de meegegeven lijst)."""
+    plaatsen = plaatsen or config.WEER_PLAATSEN
+    dagen = dagen or config.WEER_DAGEN
+    cache = _cache_lezen()
+    blokken, vers = [], False
+    for plaats in plaatsen:
+        blok = _plaats_weer(plaats, cache, dagen)
+        if blok:
+            vers = True
+            cache.setdefault("plaatsen", {})[plaats] = blok
+            blokken.append(blok)
+        else:
+            oud = (cache.get("plaatsen") or {}).get(plaats)
+            if oud:
+                blokken.append(oud)
+    if not blokken:
+        return None
+    cache["opgehaald"] = datetime.now().isoformat(timespec="minutes")
     try:
-        CACHE.write_text(json.dumps(resultaat, ensure_ascii=False))
+        CACHE.write_text(json.dumps(cache, ensure_ascii=False))
     except OSError:
         pass
-    return resultaat
+    return {"plaatsen": blokken, "opgehaald": cache["opgehaald"], "vers": vers}
 
 
 def laatste_weer():
-    """Terugvaloptie: het laatst bewaarde weer (als de API niet antwoordt)."""
+    """Terugvaloptie: het laatst bewaarde weer van vandaag of gisteren."""
+    cache = _cache_lezen()
     try:
-        data = json.loads(CACHE.read_text())
-        opgehaald = datetime.fromisoformat(data["opgehaald"])
-        if opgehaald.date() >= date.today() - timedelta(days=1):
-            return data
-    except (OSError, ValueError, KeyError):
-        pass
-    return None
+        opgehaald = datetime.fromisoformat(cache["opgehaald"])
+    except (KeyError, ValueError, TypeError):
+        return None
+    if opgehaald.date() < date.today() - timedelta(days=1):
+        return None
+    blokken = [cache["plaatsen"][p] for p in config.WEER_PLAATSEN
+               if p in cache.get("plaatsen", {})]
+    if not blokken:
+        return None
+    return {"plaatsen": blokken, "opgehaald": cache["opgehaald"], "vers": False}
+
+
+def haal_weer(plaats, dagen=None):
+    """Eén plaats, los te gebruiken (bijv. in een test of script)."""
+    return _plaats_weer(plaats, _cache_lezen(), dagen or config.WEER_DAGEN)
