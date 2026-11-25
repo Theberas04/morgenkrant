@@ -12,6 +12,7 @@ import requests
 import time
 
 from . import config
+from .weer import CODES as CODES_NL, DAG_KORT
 
 CACHE_DIR = config.DATA_DIR / "rubrieken"
 
@@ -225,7 +226,7 @@ def prent(dag=None):
 
 
 # ---------------------------------------------------------------- feeds
-def _feed_rubriek(naam, titel, url, aantal=4, bron=""):
+def _feed_rubriek(naam, titel, url, aantal=4, bron="", filter_re=None):
     feed = feedparser.parse(url, agent=config.USER_AGENT)
     items = []
     for entry in feed.entries:
@@ -234,6 +235,10 @@ def _feed_rubriek(naam, titel, url, aantal=4, bron=""):
         samenvatting = " ".join(samenvatting.split())
         if not kop:
             continue
+        if filter_re and not filter_re.search(f"{kop} {samenvatting}"):
+            continue
+        if samenvatting.lower().startswith(kop.lower()[:35]):
+            samenvatting = samenvatting[len(kop):].lstrip(" .:-")
         items.append({"tekst": kop, "meta": samenvatting[:110]})
         if len(items) >= aantal:
             break
@@ -434,7 +439,256 @@ def citaat(dag=None):
     return None
 
 
-# ---------------------------------------------------------------- tech-tip
+# ---------------------------------------------------------------- CBS-cijfers
+CBS_API = "https://opendata.cbs.nl/ODataApi/odata"
+
+
+def _cbs_laatste(dataset, veld, filter_regel, periode_veld="Perioden"):
+    """Nieuwste niet-lege waarde uit een CBS-dataset (OData)."""
+    try:
+        data = _get_json(f"{CBS_API}/{dataset}/TypedDataSet", {
+            "$filter": filter_regel, "$top": "2000",
+        })
+        rijen = [r for r in data.get("value", []) if r.get(veld) is not None]
+        if not rijen:
+            return None, None
+        laatste = max(rijen, key=lambda r: str(r.get(periode_veld, "")))
+        return laatste[veld], str(laatste.get(periode_veld, ""))
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return None, None
+
+
+def _periode_naar_nl(periode):
+    """2026MM11 → november 2026, 2026KW03 → 3e kwartaal 2026."""
+    m = re.match(r"(\d{4})MM(\d{2})", periode or "")
+    if m:
+        return f"{config.MAANDEN[int(m.group(2)) - 1]} {m.group(1)}"
+    m = re.match(r"(\d{4})KW(\d{2})", periode or "")
+    if m:
+        return f"{m.group(2)}e kwartaal {m.group(1)}"
+    m = re.match(r"(\d{4})JJ(\d{2})", periode or "")
+    if m:
+        return m.group(1)
+    return periode or ""
+
+
+def inflatie(dag=None):
+    """Consumentenprijsindex en werkloosheid, rechtstreeks uit de CBS-cijfers."""
+    cpi, cpi_periode = _cbs_laatste("83131NED", "JaarmutatieCPI_5",
+                                    "Bestedingscategorieen eq 'T001112  '")
+    maand, _ = _cbs_laatste("83131NED", "MaandmutatieCPI_3",
+                            "Bestedingscategorieen eq 'T001112  '")
+    werkloos, werkloos_periode = _cbs_laatste(
+        "80590NED", "NietSeizoengecorrigeerd_7",
+        "Geslacht eq 'T001038' and Leeftijd eq '52052   '")
+
+    items = []
+    if cpi is not None:
+        items.append({"tekst": f"Inflatie {cpi:.1f}% op jaarbasis".replace(".", ","),
+                      "meta": _periode_naar_nl(cpi_periode)})
+    if maand is not None:
+        items.append({"tekst": (f"Prijzen deze maand {'+' if maand >= 0 else ''}"
+                                f"{maand:.1f}%").replace(".", ","),
+                      "meta": "t.o.v. vorige maand"})
+    if werkloos is not None:
+        items.append({"tekst": f"Werkloosheid {werkloos:.1f}%".replace(".", ","),
+                      "meta": _periode_naar_nl(werkloos_periode)})
+    if not items:
+        return None
+    return {"id": "inflatie", "titel": "Inflatie & werk", "bron": "CBS",
+            "link": "https://www.cbs.nl/nl-nl/cijfers", "items": items}
+
+
+# ---------------------------------------------------------------- geldzaken
+GELD_WOORDEN = re.compile(r"pensioen|hypotheek|belasting|\baow\b|salaris|spaarrente|"
+                          r"verzekering|huurcommissie|energierekening|koopkracht|"
+                          r"studieschuld|erfenis|beleggen", re.I)
+
+
+def geldzaken(dag=None):
+    blok = _feed_rubriek("geld", "Pensioenen & geldzaken",
+                         "https://www.nu.nl/rss/Economie", 3, "NU.nl",
+                         filter_re=GELD_WOORDEN)
+    if blok:
+        return blok
+    return _feed_rubriek("geld", "Pensioenen & geldzaken",
+                         "https://feeds.nos.nl/nosnieuwseconomie", 3, "NOS",
+                         filter_re=GELD_WOORDEN)
+
+
+# ---------------------------------------------------------------- AI en open source
+AI_WOORDEN = re.compile(r"\b(ai|kunstmatige intelligentie|chatgpt|openai|llm|"
+                        r"machine learning|algoritme|gemini|copilot|claude)\b", re.I)
+OSS_WOORDEN = re.compile(r"\b(linux|open ?source|ubuntu|debian|kernel|kde|gnome|"
+                         r"firefox|libreoffice|github|gpl|rust|python)\b", re.I)
+
+
+def ai(dag=None):
+    return _feed_rubriek("ai", "AI-nieuws", "https://tweakers.net/feeds/nieuws.xml",
+                         3, "Tweakers", filter_re=AI_WOORDEN)
+
+
+def opensource(dag=None):
+    return _feed_rubriek("oss", "Open source & Linux", "https://tweakers.net/feeds/nieuws.xml",
+                         3, "Tweakers", filter_re=OSS_WOORDEN)
+
+
+REVIEW_WOORDEN = re.compile(r"review|getest|hands-?on|vergelijking|test", re.I)
+
+
+def gadgets(dag=None):
+    blok = _feed_rubriek("gadgets", "Gadget van de dag",
+                         "https://tweakers.net/feeds/reviews.xml", 3, "Tweakers",
+                         filter_re=REVIEW_WOORDEN)
+    return blok or _feed_rubriek("gadgets", "Gadget van de dag",
+                                 "https://tweakers.net/feeds/reviews.xml", 3, "Tweakers")
+
+
+# ---------------------------------------------------------------- Formule 1
+F1_WOORDEN = re.compile(r"formule 1|verstappen|grand prix|\bF1\b|red bull racing|"
+                        r"mclaren|ferrari", re.I)
+F1_UITSLUITEN = re.compile(r"moto\s?gp|moto2|moto3|superbike", re.I)
+
+
+def formule1(dag=None):
+    feed = feedparser.parse("https://feeds.nos.nl/nossportalgemeen", agent=config.USER_AGENT)
+    items = []
+    for entry in feed.entries:
+        kop = re.sub(r"<[^>]+>", "", entry.get("title", "")).strip()
+        samenvatting = " ".join(re.sub(r"<[^>]+>", " ", entry.get("summary", "") or "").split())
+        tekst = f"{kop} {samenvatting}"
+        if not kop or not F1_WOORDEN.search(tekst) or F1_UITSLUITEN.search(tekst):
+            continue
+        items.append({"tekst": kop, "meta": samenvatting[:110]})
+        if len(items) >= 3:
+            break
+    if not items:
+        blok = _feed_rubriek("f1", "Formule 1", "https://www.nu.nl/rss/Sport", 3, "NU.nl Sport",
+                             filter_re=F1_WOORDEN)
+        return blok
+    return {"id": "f1", "titel": "Formule 1", "bron": "NOS Sport",
+            "link": "https://nos.nl/sport", "items": items}
+
+
+# ---------------------------------------------------------------- L1-rubrieken
+L1_URL = "https://www.l1.nl/rss/nieuws"
+L1_ECONOMIE = re.compile(r"\b(ondernem|bedrijf|bedrijven|miljoen|euro|winkel|failliet|"
+                         r"vacature|werkgelegenheid|economie|investering|startup|"
+                         r"gemeente.*geld|begroting|industrie|boer|tuinder)\b", re.I)
+L1_CULTUUR = re.compile(r"\b(theater|museum|tentoonstelling|expositie|concert|festival|"
+                        r"cultuur|kunst|erfgoed|boek|film|muziek|toneel|koor|"
+                        r"carnaval|processie|monument)\b", re.I)
+L1_PROGRAMMA = ("Limburg Kiekt", "L1 Nieuws -", "Spreekbeurt", "Limburg in de Waereld",
+                "Radio", "Podcast", "Muziek", "L1 Vandaag", "Uitzending")
+
+
+def _l1_rubriek(naam, titel, filter_re, aantal=3):
+    feed = feedparser.parse(L1_URL, agent=config.USER_AGENT)
+    items = []
+    for entry in feed.entries:
+        kop = re.sub(r"<[^>]+>", "", entry.get("title", "")).strip()
+        samenvatting = " ".join(re.sub(r"<[^>]+>", " ", entry.get("summary", "") or "").split())
+        if not kop or any(p.lower() in kop.lower() for p in L1_PROGRAMMA):
+            continue
+        if filter_re and not filter_re.search(f"{kop} {samenvatting}"):
+            continue
+        if samenvatting.lower().startswith(kop.lower()[:35]):
+            samenvatting = samenvatting[len(kop):].lstrip(" .:-")
+        items.append({"tekst": kop, "meta": samenvatting[:110]})
+        if len(items) >= aantal:
+            break
+    if not items:
+        return None
+    return {"id": naam, "titel": titel, "bron": "L1", "link": "https://www.l1.nl/",
+            "items": items}
+
+
+def l1_economie(dag=None):
+    return _l1_rubriek("l1eco", "Ondernemen in Limburg", L1_ECONOMIE)
+
+
+def l1_regio(dag=None):
+    return _l1_rubriek("l1regio", "L1 Regio", None)
+
+
+def l1_cultuur(dag=None):
+    return _l1_rubriek("l1cultuur", "L1 Cultuur", L1_CULTUUR)
+
+
+# ---------------------------------------------------------------- startups
+def startups(dag=None):
+    return _feed_rubriek("startups", "Startups & ondernemen",
+                         "https://www.emerce.nl/feed", 3, "Emerce")
+
+
+# ---------------------------------------------------------------- vooruitzichten
+def _openmeteo_daily(params, dagen):
+    from . import weer
+
+    cache = weer._cache_lezen()
+    plaats = config.WEER_PLAATSEN[0]
+    lat, lon = weer._gps(plaats, cache)
+    if lat is None:
+        return None
+    try:
+        return requests.get("https://api.open-meteo.com/v1/forecast", params={
+            "latitude": lat, "longitude": lon, "daily": params,
+            "timezone": config.TIMEZONE, "forecast_days": dagen,
+        }, timeout=25, headers={"User-Agent": config.USER_AGENT}).json()["daily"]
+    except (requests.RequestException, KeyError, ValueError):
+        return None
+
+
+def weer_twee_weken(dag=None):
+    dag = dag or date.today()
+    daily = _openmeteo_daily("weather_code,temperature_2m_max,temperature_2m_min,"
+                             "precipitation_probability_max", 14)
+    if not daily:
+        return None
+    items = []
+    for i, periode in enumerate(daily["time"][:7]):
+        d = date.fromisoformat(periode)
+        code = daily["weather_code"][i]
+        neerslag = daily["precipitation_probability_max"][i] or 0
+        items.append({"tekst": f"{DAG_KORT[d.weekday()]} {d.day}/{d.month}: "
+                               f"{round(daily['temperature_2m_max'][i])}° / "
+                               f"{round(daily['temperature_2m_min'][i])}°, "
+                               f"{CODES_NL.get(code, 'wisselvallig')}",
+                      "meta": f"{neerslag}%"})
+    week2_max = max(daily["temperature_2m_max"][7:]) if len(daily["time"]) > 7 else None
+    week2_min = min(daily["temperature_2m_min"][7:]) if len(daily["time"]) > 7 else None
+    if week2_max is not None:
+        items.append({"tekst": f"Vanaf {date.fromisoformat(daily['time'][7]).day}/"
+                               f"{date.fromisoformat(daily['time'][7]).month}: "
+                               f"tussen {round(week2_min)}° en {round(week2_max)}°",
+                      "meta": "tweede week"})
+    return {"id": "weer14", "titel": "Vooruitzichten", "bron": config.WEER_PLAATSEN[0],
+            "link": "https://open-meteo.com/", "items": items}
+
+
+UV_LABELS = [(3, "laag"), (6, "matig"), (8, "hoog"), (11, "zeer hoog"), (99, "extreem")]
+
+
+def uv_index(dag=None):
+    daily = _openmeteo_daily("uv_index_max", 2)
+    if not daily or not daily.get("uv_index_max"):
+        return None
+    waarde = daily["uv_index_max"][0]
+    if waarde is None:
+        return None
+    label = next(label for grens, label in UV_LABELS if waarde <= grens)
+    advies = ("smeren en een pet op" if waarde >= 6 else
+              "geen extra bescherming nodig" if waarde < 3 else
+              "let op bij lang buiten zijn")
+    items = [{"tekst": f"UV-index {waarde:.0f} ({label})", "meta": advies}]
+    morgen = daily["uv_index_max"][1] if len(daily["uv_index_max"]) > 1 else None
+    if morgen is not None:
+        items.append({"tekst": f"Morgen UV {morgen:.0f}",
+                      "meta": next(label for grens, label in UV_LABELS if morgen <= grens)})
+    return {"id": "uv", "titel": "UV-index", "bron": "Open-Meteo",
+            "link": "https://open-meteo.com/", "items": items}
+
+
 def tech_tip(dag=None):
     dag = dag or date.today()
     tip = TECH_TIPS[dag.timetuple().tm_yday % len(TECH_TIPS)]
@@ -442,8 +696,13 @@ def tech_tip(dag=None):
             "link": "", "items": [], "tekst": tip}
 
 
-RUBRIEKEN = (economie, treinverkeer, op_deze_dag, citaat, gedicht, prent,
-             luchtkwaliteit, zonmaan, tech_tip, games, film)
+RUBRIEKEN = (
+    economie, inflatie, geldzaken, l1_economie, startups,
+    treinverkeer, op_deze_dag, citaat, gedicht, prent,
+    ai, opensource, gadgets, formule1, l1_regio, l1_cultuur,
+    weer_twee_weken, luchtkwaliteit, zonmaan, uv_index,
+    tech_tip, games, film,
+)
 
 
 def haal_alles(dag=None, vers=True):
@@ -457,15 +716,22 @@ def haal_alles(dag=None, vers=True):
         except ValueError:
             pass
 
-    blokken = []
+    blokken, gebruikt = [], set()
     for functie in RUBRIEKEN:
         try:
             blok = functie(dag)
         except Exception as fout:                      # één rubriek mag nooit de krant stoppen
             print(f"[rubriek] {functie.__name__} overgeslagen: {type(fout).__name__}")
             blok = None
-        if blok and (blok.get("items") or blok.get("regels") or blok.get("tekst")
-                     or blok.get("beeld")):
+        if not blok:
+            continue
+        if blok.get("items"):
+            nieuw = [it for it in blok["items"] if it["tekst"].lower() not in gebruikt]
+            gebruikt.update(it["tekst"].lower() for it in nieuw)
+            blok["items"] = nieuw
+            if not nieuw:
+                continue
+        if blok.get("items") or blok.get("regels") or blok.get("tekst") or blok.get("beeld"):
             blokken.append(blok)
     try:
         bestand.write_text(json.dumps(blokken, ensure_ascii=False))
