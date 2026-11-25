@@ -84,10 +84,12 @@ def treinverkeer(dag=None):
         titel = re.sub(r"<[^>]+>", "", entry.get("title", "")).strip()
         tekst = re.sub(r"<[^>]+>", " ", entry.get("summary") or entry.get("content", [{}])[0].get("value", ""))
         tekst = " ".join(tekst.split())
-        if not titel or "werkzaamheden" in titel and len(items) > 4:
+        if tekst.lower().startswith(titel.lower()[:40]):
+            tekst = tekst[len(titel):].lstrip(" .:-")
+        if not titel:
             continue
-        items.append({"tekst": titel, "meta": tekst[:120]})
-        if len(items) >= 6:
+        items.append({"tekst": titel, "meta": tekst[:110]})
+        if len(items) >= 4:
             break
     return {"id": "trein", "titel": "Treinverkeer", "bron": "Rijden de Treinen",
             "link": "https://www.rijdendetreinen.nl/storingen", "items": items}
@@ -255,7 +257,7 @@ def games(dag=None):
         if not kop or not GAME_WOORDEN.search(f"{kop} {samenvatting}"):
             continue
         items.append({"tekst": kop, "meta": samenvatting[:110]})
-        if len(items) >= 4:
+        if len(items) >= 3:
             break
     if not items:
         return None
@@ -264,7 +266,172 @@ def games(dag=None):
 
 
 def film(dag=None):
-    return _feed_rubriek("film", "Film & serie", "https://www.filmkrant.nl/feed", 4, "Filmkrant")
+    return _feed_rubriek("film", "Film & serie", "https://www.filmkrant.nl/feed", 3, "Filmkrant")
+
+
+# ---------------------------------------------------------------- economie
+def economie(dag=None):
+    return _feed_rubriek("economie", "Economie & werk", "https://www.nu.nl/rss/Economie",
+                         3, "NU.nl")
+
+
+# ---------------------------------------------------------------- luchtkwaliteit
+AQI_LABELS = [(20, "goed"), (40, "redelijk"), (60, "matig"), (80, "slecht"),
+              (100, "zeer slecht"), (10_000, "extreem slecht")]
+
+
+def _aqi_label(aqi):
+    for grens, label in AQI_LABELS:
+        if aqi <= grens:
+            return label
+    return "onbekend"
+
+
+def luchtkwaliteit(dag=None):
+    """Europese luchtkwaliteitsindex (EAQI) per plaats, via Open-Meteo."""
+    from . import weer
+
+    cache = weer._cache_lezen()
+    items = []
+    for plaats in config.WEER_PLAATSEN:
+        lat, lon = weer._gps(plaats, cache)
+        if lat is None:
+            continue
+        try:
+            data = requests.get("https://air-quality-api.open-meteo.com/v1/air-quality",
+                                params={"latitude": lat, "longitude": lon,
+                                        "current": "european_aqi,pm2_5,pm10",
+                                        "timezone": config.TIMEZONE},
+                                timeout=25, headers={"User-Agent": config.USER_AGENT}).json()
+            nu = data["current"]
+        except (requests.RequestException, KeyError, ValueError):
+            continue
+        aqi = nu.get("european_aqi")
+        if aqi is None:
+            continue
+        items.append({"tekst": f"{plaats}: {_aqi_label(aqi)} (index {round(aqi)})",
+                      "meta": f"fijnstof {nu.get('pm2_5', 0):.0f} µg/m³"})
+    if not items:
+        return None
+    return {"id": "lucht", "titel": "Luchtkwaliteit", "bron": "Open-Meteo",
+            "link": "https://open-meteo.com/en/docs/air-quality-api", "items": items}
+
+
+# ---------------------------------------------------------------- zon en maan
+MAANFASEN = ["nieuwe maan", "wassende maan", "eerste kwartier", "wassende maan",
+             "volle maan", "afnemende maan", "laatste kwartier", "afnemende maan"]
+SYNODISCH = 29.530588853
+NIEUWE_MAAN = date(2000, 1, 6)
+
+
+def maanstand(dag=None):
+    """Maanfase en het deel van de maan dat verlicht is, zonder externe dienst."""
+    import math
+
+    dag = dag or date.today()
+    ouderdom = ((dag - NIEUWE_MAAN).days % SYNODISCH)
+    index = int((ouderdom / SYNODISCH) * 8 + 0.5) % 8
+    verlicht = (1 - math.cos(2 * math.pi * ouderdom / SYNODISCH)) / 2
+    return MAANFASEN[index], ouderdom, round(verlicht * 100)
+
+
+def zonmaan(dag=None):
+    dag = dag or date.today()
+    from . import weer
+
+    cache = weer._cache_lezen()
+    plaats = config.WEER_PLAATSEN[0]
+    lat, lon = weer._gps(plaats, cache)
+    if lat is None:
+        return None
+    try:
+        data = requests.get("https://api.open-meteo.com/v1/forecast", params={
+            "latitude": lat, "longitude": lon, "daily": "sunrise,sunset",
+            "timezone": config.TIMEZONE, "forecast_days": 1,
+        }, timeout=25, headers={"User-Agent": config.USER_AGENT}).json()["daily"]
+        opkomst = data["sunrise"][0][11:16]
+        ondergang = data["sunset"][0][11:16]
+    except (requests.RequestException, KeyError, ValueError, IndexError):
+        return None
+
+    fasenaam, _, verlicht = maanstand(dag)
+    uur, minuut = int(ondergang[:2]), int(ondergang[3:])
+    daglengte = (uur * 60 + minuut) - (int(opkomst[:2]) * 60 + int(opkomst[3:]))
+    items = [
+        {"tekst": f"Zon op {opkomst}, onder {ondergang}", "meta": f"{plaats}"},
+        {"tekst": f"Daglengte {daglengte // 60} uur {daglengte % 60} minuten", "meta": ""},
+        {"tekst": f"Maan: {fasenaam}, {verlicht}% verlicht", "meta": ""},
+    ]
+    return {"id": "zonmaan", "titel": "Zon en maan", "bron": "Open-Meteo",
+            "link": "https://open-meteo.com/", "items": items}
+
+
+# ---------------------------------------------------------------- citaat
+_CITAAT_VELD = re.compile(r"\|\s*(vertaling|tekst|bron)\s*=\s*(.*?)(?=\n\s*\||\Z)", re.S)
+
+
+def _sjabloon_velden(blok):
+    return {m.group(1): m.group(2).strip() for m in _CITAAT_VELD.finditer(blok)}
+
+
+def _citaten_uit(wikitext):
+    """Alle {{citaat}}/{{vertaald citaat}}-blokken als (Nederlandse tekst, bron)."""
+    citaten = []
+    for m in re.finditer(r"\{\{(vertaald )?citaat", wikitext):
+        start = m.start()
+        diepte, i = 0, start
+        while i < len(wikitext) - 1:
+            paar = wikitext[i:i + 2]
+            if paar == "{{":
+                diepte += 1
+                i += 2
+                continue
+            if paar == "}}":
+                diepte -= 1
+                i += 2
+                if diepte == 0:
+                    break
+                continue
+            i += 1
+        velden = _sjabloon_velden(wikitext[start:i])
+        tekst = velden.get("vertaling") or velden.get("tekst") or ""
+        tekst = _wiki_platte_tekst(tekst).strip(' “”"')
+        if 25 <= len(tekst) <= 260:
+            bron = re.sub(r"\{\{[^{}]*\}\}", "", velden.get("bron", ""))
+            bron = _wiki_platte_tekst(bron).strip(" ,")
+            citaten.append((tekst, bron[:80]))
+    return citaten
+
+
+def citaat(dag=None):
+    """Een Nederlands citaat van Wikiquote; de pagina wordt per dag gekozen."""
+    dag = dag or date.today()
+    titels = []
+    try:
+        willekeurig = _get_json("https://nl.wikiquote.org/w/api.php", {
+            "action": "query", "list": "random", "rnnamespace": 0, "rnlimit": 6,
+            "format": "json", "formatversion": 2,
+        })
+        titels = [p["title"] for p in willekeurig["query"]["random"]]
+    except (requests.RequestException, KeyError, ValueError, TypeError):
+        titels = []
+
+    for titel in titels:
+        try:
+            data = _get_json("https://nl.wikiquote.org/w/api.php", {
+                "action": "parse", "page": titel, "prop": "wikitext",
+                "format": "json", "formatversion": 2,
+            })
+            citaten = _citaten_uit(data["parse"]["wikitext"])
+        except (requests.RequestException, KeyError, ValueError, TypeError):
+            continue
+        if not citaten:
+            continue
+        tekst, bron = citaten[dag.timetuple().tm_yday % len(citaten)]
+        return {"id": "citaat", "titel": "Citaat", "bron": titel,
+                "link": f"https://nl.wikiquote.org/wiki/{titel.replace(' ', '_')}",
+                "items": [{"tekst": tekst, "meta": bron}]}
+    return None
 
 
 # ---------------------------------------------------------------- tech-tip
@@ -275,7 +442,8 @@ def tech_tip(dag=None):
             "link": "", "items": [], "tekst": tip}
 
 
-RUBRIEKEN = (treinverkeer, op_deze_dag, gedicht, prent, tech_tip, games, film)
+RUBRIEKEN = (economie, treinverkeer, op_deze_dag, citaat, gedicht, prent,
+             luchtkwaliteit, zonmaan, tech_tip, games, film)
 
 
 def haal_alles(dag=None, vers=True):
