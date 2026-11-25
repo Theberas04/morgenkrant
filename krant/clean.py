@@ -11,13 +11,19 @@ JUNK = re.compile(
     r"bent u al abonnee|word nu lid|probeer.*gratis|log in om|"
     r"nieuwsbrief|schrijf je in|ontvang.*nieuwsbrief|tekst\s*[–—:-])",
     re.I)
+# tv-gids-regels: "Woensdag 2 december 17:00 en 19:00 uur", "Zaterdag om 17:00 uur"
+JUNK_UUR = re.compile(
+    r"^\s*((maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|ma|di|wo|do|vr|za|zo)"
+    r"[^.]{0,40}?\b\d{1,2}[:.]\d{2}\b|\d{1,2}[:.]\d{2}\s*(en\s*\d{1,2}[:.]\d{2}\s*)?uur\b)",
+    re.I)
 BLOCK_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "div", "span", "section"}
 # korte blokken met deze woorden zijn bijna altijd promotie of navigatie
 JUNK_CONTAINS = ("nieuwsbrief", "op google", "journ", "lees ook", "deel dit artikel",
                  "volg ons", "abonnee worden", "word abonnee", "meld je aan",
                  "bekijk ook", "meer over dit onderwerp", "voorkeursbron",
                  "zoekresultaten", "kies nrc", "meer informatie over",
-                 "dit artikel is onderdeel", "advertentie")
+                 "dit artikel is onderdeel", "advertentie", "uitzendtijden",
+                 "bekijk je op", "alle afleveringen", "presentatie is in handen")
 DROP_TAGS = {"script", "style", "figure", "iframe", "form", "aside", "noscript",
              "table", "button", "video", "audio", "figcaption"}
 
@@ -59,6 +65,9 @@ def clean_article_html(html, title):
         if not text:
             if el.getparent() is not None and el.tag in {"p", "div", "span", "section", "li"}:
                 el.drop_tree()
+            continue
+        if el.tag in {"p", "li"} and JUNK_UUR.match(text) and len(text) < 320:
+            el.drop_tree()
             continue
         if el.tag in {"p", "li", "div", "span", "section"} and JUNK.match(text):
             el.drop_tree()
