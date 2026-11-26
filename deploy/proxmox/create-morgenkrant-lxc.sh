@@ -27,24 +27,74 @@ command -v pveam >/dev/null || die "pveam niet gevonden."
 ARCH="${ARCH:-$(dpkg --print-architecture)}"
 DEBIAN_MAJOR="${DEBIAN_MAJOR:-13}"
 
-log "Template zoeken voor $ARCH"
-TEMPLATE="$(pveam available --section system 2>/dev/null | awk '{print $NF}' \
-  | grep -E "^debian-${DEBIAN_MAJOR}-standard_.*_${ARCH}\.tar" | sort -V | tail -1 || true)"
-if [ -z "$TEMPLATE" ]; then
-  DEBIAN_MAJOR=12
-  TEMPLATE="$(pveam available --section system 2>/dev/null | awk '{print $NF}' \
-    | grep -E "^debian-${DEBIAN_MAJOR}-standard_.*_${ARCH}\.tar" | sort -V | tail -1 || true)"
-fi
-[ -n "$TEMPLATE" ] || die "Geen Debian-template voor $ARCH gevonden (pveam available --section system)."
-case "$TEMPLATE" in *_${ARCH}.tar*) : ;; *) die "Template $TEMPLATE hoort niet bij $ARCH." ;; esac
-log "Template: $TEMPLATE"
+# --- template zoeken: alleen bestanden die er écht staan ---------------------
+template_opslag() {   # eerste opslag waar vztmpl op mag, 'local' eerst
+  local s
+  s="$(pvesm status --content vztmpl 2>/dev/null | awk 'NR>1 && $3=="active"{print $1}')"
+  [ -n "$s" ] || { printf 'local'; return; }
+  if printf '%s\n' "$s" | grep -qx local; then printf 'local'; else printf '%s\n' "$s" | head -1; fi
+}
 
-if ! pveam list local 2>/dev/null | grep -q "${TEMPLATE%%_*}"; then
-  log "Template downloaden (kan een minuut duren)"
-  pveam update >/dev/null 2>&1 || true
-  pveam download local "$TEMPLATE" || die "Kon $TEMPLATE niet downloaden naar opslag 'local'."
+template_aanwezig() {  # $1 = opslag, $2 = bestandsnaam
+  local opslag="$1" naam="$2"
+  pvesm list "$opslag" --content vztmpl 2>/dev/null \
+    | grep -qF "${opslag}:vztmpl/${naam}"
+}
+
+beschikbaar() {        # nieuwste aanbod van Debian $1 voor $ARCH
+  pveam available --section system 2>/dev/null \
+    | grep -oE "[A-Za-z0-9._+-]+\.tar\.(zst|gz|xz)" \
+    | grep -E "^debian-${1}-standard_.*_${ARCH}\." | sort -V | tail -1 || true
+}
+
+lokaal_nieuwste() {    # nieuwste al gedownloade debian-template voor $ARCH
+  local opslag="$1" major="$2"
+  pvesm list "$opslag" --content vztmpl 2>/dev/null \
+    | grep -oE "[A-Za-z0-9._+-]+\.tar\.(zst|gz|xz)" \
+    | grep -E "^debian-${major}-standard_.*_${ARCH}\." | sort -V | tail -1 || true
+}
+
+TMPL_OPSLAG="$(template_opslag)"
+log "Template zoeken voor $ARCH (opslag '$TMPL_OPSLAG')"
+
+if [ -n "${TEMPLATE:-}" ]; then
+  log "Template: $TEMPLATE (zelf gekozen)"
+else
+  TEMPLATE="$(beschikbaar "$DEBIAN_MAJOR")"
+  if [ -z "$TEMPLATE" ] && [ "$DEBIAN_MAJOR" != "12" ]; then
+    DEBIAN_MAJOR=12
+    TEMPLATE="$(beschikbaar "$DEBIAN_MAJOR")"
+  fi
 fi
-TEMPLATE_PAD="local:vztmpl/$TEMPLATE"
+
+LOKAAL="$(lokaal_nieuwste "$TMPL_OPSLAG" "$DEBIAN_MAJOR")"
+
+if [ -n "$TEMPLATE" ] && ! template_aanwezig "$TMPL_OPSLAG" "$TEMPLATE"; then
+  log "Template downloaden naar '$TMPL_OPSLAG' (kan een minuut duren)"
+  pveam update >/dev/null 2>&1 || true
+  pveam download "$TMPL_OPSLAG" "$TEMPLATE" >/dev/null 2>&1 || true
+fi
+
+# Na de download: alleen gebruiken wat aantoonbaar bestaat; anders het nieuwste
+# dat er wél staat; anders stoppen met uitleg.
+if [ -z "$TEMPLATE" ] || ! template_aanwezig "$TMPL_OPSLAG" "$TEMPLATE"; then
+  if [ -n "$LOKAAL" ]; then
+    warn "Template ${TEMPLATE:-onbekend} is niet gedownload; ik gebruik $LOKAAL."
+    TEMPLATE="$LOKAAL"
+  else
+    warn "Template ${TEMPLATE:-onbekend} staat niet op '$TMPL_OPSLAG'."
+    TEMPLATE="$(lokaal_nieuwste "$TMPL_OPSLAG" 13)"
+    [ -n "$TEMPLATE" ] || TEMPLATE="$(lokaal_nieuwste "$TMPL_OPSLAG" 12)"
+    [ -n "$TEMPLATE" ] || die "Geen Debian-template op opslag '$TMPL_OPSLAG' en downloaden lukte niet.
+Controleer: pveam update && pveam available --section system | grep debian
+Of zet de opslag met vztmpl: STORAGE=<naam> en TEMPLATE=<bestandsnaam>."
+  fi
+fi
+case "$TEMPLATE" in *_${ARCH}.tar.*) : ;; *) die "Template $TEMPLATE hoort niet bij $ARCH." ;; esac
+template_aanwezig "$TMPL_OPSLAG" "$TEMPLATE" \
+  || die "Template $TEMPLATE staat niet op '$TMPL_OPSLAG' (welk bestand bedoel je? zet TEMPLATE=<naam>)."
+log "Template: $TEMPLATE"
+TEMPLATE_PAD="${TMPL_OPSLAG}:vztmpl/$TEMPLATE"
 
 opslag_kandidaten() {
   pvesm status --content "$1" 2>/dev/null | awk 'NR>1 && $3=="active"{
@@ -86,7 +136,7 @@ fi
 [ -z "$(pct status "$CTID" 2>/dev/null || true)" ] || die "Container $CTID bestaat al. Kies CTID=<ander id>."
 
 if [ "${DROOG:-0}" = "1" ]; then
-  log "DROOG=1: ik zou container $CTID ($HOSTNAME_CT, ${CORES} cores, ${MEM} MB, ${SCHIJF} GB op $STORAGE) aanmaken en inrichten."
+  log "DROOG=1: ik zou container $CTID ($HOSTNAME_CT, ${CORES} cores, ${MEM} MB, ${SCHIJF} GB op $STORAGE) aanmaken vanaf $TEMPLATE_PAD en inrichten."
   exit 0
 fi
 
